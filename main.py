@@ -32,7 +32,7 @@ class States:
     ML = "motivation_letter"
     SKILLS = "skills"
     CONTACT = "contact"
-    SUA = "superuser_auth"
+    AuthSU = "superuser_auth"
     SU = "superuser"
     DESCEXP = "describe_exp"
 
@@ -97,7 +97,7 @@ def start(message):
                 id INTEGER PRIMARY KEY,
                 fullname TEXT,
                 faculty TEXT, 
-                courseNumber INTEGER, 
+                courseNumber INTEGER,
                 "group" TEXT, 
                 ScoreType INTEGER, 
                 avgScore TEXT, 
@@ -112,7 +112,8 @@ def start(message):
     cur.close()
 
     # Initial message 
-    bot.send_message(message.chat.id, bot_messages[0])
+    bot.send_message(message.chat.id, bot_messages[0] + '\n' + bot_messages[25])
+    
 
     start_message(message)
 
@@ -210,6 +211,7 @@ def ScoreType(message):
         update_user_field(message.from_user.id, 'ScoreType', 0)
         bot.set_state(message.from_user.id, States.SCORE, message.chat.id)
     else:
+        bot.send_message(message.chat,id, bot_messages[6])
         bot.send_message(message.chat.id, bot_messages[10])
 
     
@@ -282,7 +284,7 @@ def Exp(message):
 @bot.message_handler(state=States.DESCEXP)
 def DescExp(message):
     description = message.text
-    bot.send_message(message.chat.id, bot_messages[19])
+    bot.send_message(message.chat.id, bot_messages[19], markup=hide_markup)
     update_user_field(message.from_user.id, 'experience', description)
     bot.set_state(message.from_user.id, States.ML, message.chat.id)
 
@@ -304,60 +306,34 @@ def Skills(message):
 def Contact(message):
     contact = message.text
     update_user_field(message.from_user.id, 'contact', contact)
+    bot.set_state(message.from_user.id, "EndState", message.chat.id)
     bot.send_message(message.chat.id, bot_messages[22])
-    return
+
+@bot.message_handler(state="EndState")
+def end(message):
+    bot.send_message(message.chat.id, bot_messages[26])
 
 
+################### Superuser Part #######################################################################
 
-################### Superuser Part ####################
-# @bot.message_handler(state=States.SUA)
-# def superuser_auth(message):
-#     pswd = message.text
-#     if (pswd == correct_pswd):
-#         markup = types.InlineKeyboardMarkup()
-#         markup.add(types.InlineKeyboardButton("Получить данные", callback_data='getData'))
-
-#         bot.send_message(message.chat.id, bot_messages[23])
-#         bot.set_state(message.from_user.id, States.SU, message.chat.id)
-#     else:
-#         bot.send_message(message.chat.id, bot_messages[24])
-    
-    
-# @bot.callback_query_handler(func=lambda callback: True)
-# def superuser(callback, message):
-#     if callback.data == 'getData':
-#         receiveData(message)
-
-
-# def receiveData(message):
-#     try:
-#         pass
-#     except Exception as e:
-#         bot.send_message(message.chat.id, f"Ошибка при получении данных: {str(e)}")
-#         return
-
-# ... (весь предыдущий код до суперпользователя) ...
-
-################### Superuser Part ####################
-@bot.message_handler(state=States.SU)
+@bot.message_handler(state=States.AuthSU)
 def superuser_auth(message):
     pswd = message.text.strip()
     if pswd == correct_pswd:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("📊 Получить все анкеты", callback_data='get_all_data'))
-        markup.add(types.InlineKeyboardButton("👤 Поиск по факультету", callback_data='search_by_name'))
-        
-        bot.send_message(
-            message.chat.id, 
-            "✅ Авторизация успешна!\nВыберите действие:",
-            reply_markup=markup
-        )
         # Состояние остаётся SU — мы уже в режиме суперпользователя
+        bot.send_message(message.chat.id, "✅ Авторизация прошла успешно!")
+
     else:
         bot.send_message(message.chat.id, bot_messages[24])
         bot.delete_state(message.from_user.id, message.chat.id)
         start_message(message)  # Возврат к выбору роли
 
+@bot.message_handler(state=States.SU)
+def superuser(message):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📊 Получить все анкеты", callback_data='get_all_data'))
+    markup.add(types.InlineKeyboardButton("👤 Поиск по факультету", callback_data='search_by_name'))
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda callback: True)
 def superuser_callback(callback):
@@ -395,6 +371,7 @@ def receive_all_data(message):
         
         if not users:
             bot.send_message(message.chat.id, "📭 Нет заполненных анкет в базе данных.")
+            superuser(message)
             return
         
         # Формируем сообщение со всеми анкетами
@@ -448,6 +425,7 @@ def receive_all_data(message):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("📤 Экспортировать в CSV", callback_data='export_csv'))
         bot.send_message(message.chat.id, f"✅ Всего анкет: {total}", reply_markup=markup)
+        superuser(message)
         
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Ошибка при получении данных: {str(e)}")
@@ -472,6 +450,7 @@ def search_by_name(message):
         
         if not users:
             bot.send_message(message.chat.id, f"🔍 Не найдено анкет по запросу '{search_term}'")
+            superuser(message)
             return
         
         response = f"🔍 Найдено {len(users)} анкет по запросу '{search_term}':\n\n"
@@ -510,6 +489,7 @@ def search_by_name(message):
         if response.strip():
             bot.send_message(message.chat.id, response)
 
+        superuser(message)
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Ошибка поиска: {str(e)}")
 
@@ -536,6 +516,7 @@ def export_to_csv(callback):
         if not users:
             bot.send_message(callback.message.chat.id, "📭 Нет данных для экспорта")
             bot.answer_callback_query(callback.id)
+            superuser(callback.message)
             return
         
         # Создаём CSV в памяти с правильной кодировкой для кириллицы (UTF-8-SIG)
@@ -574,7 +555,7 @@ def export_to_csv(callback):
         
         # Создаём файловый объект для отправки
         bio = BytesIO(csv_bytes)
-        bio.name = 'ankety.csv'  # Имя файла для Telegram
+        bio.name = 'resumes.csv'  # Имя файла для Telegram
         
         # Отправляем документ
         bot.send_document(
@@ -583,6 +564,7 @@ def export_to_csv(callback):
             caption=f"✅ Экспортировано {len(users)} анкет\n\n💡 Откройте в Excel: Данные → Из текста/CSV → Кодировка UTF-8"
         )
         bot.answer_callback_query(callback.id, "✅ Файл успешно отправлен!")
+        superuser(callback.message)
         
     except Exception as e:
         bot.send_message(callback.message.chat.id, f"❌ Ошибка экспорта: {str(e)}")
