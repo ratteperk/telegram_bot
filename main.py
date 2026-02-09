@@ -7,15 +7,19 @@ from telebot import custom_filters
 import sqlite3
 from pprint import pprint
 from docx import Document
+import os
 
 # Variables #
 
 
 ## ----------- Bot -------------- ##
 state_storage = StateMemoryStorage()
-f = open('API.txt', 'r')
-api_key = f.readline()
-f.close()
+# f = open('API.txt', 'r')
+# api_key = f.readline()
+# f.close()
+
+api_key = os.environ.get('API_KEY', '')
+
 bot = telebot.TeleBot(api_key, state_storage=state_storage)
 bot.add_custom_filter(custom_filters.StateFilter(bot))
 
@@ -42,17 +46,17 @@ class States:
 f1 = open('./text_data/messages.txt', 'r')
 f2 = open('./text_data/faculties.txt', 'r')
 f3 = open('./text_data/directions.txt', 'r')
-f4 = open('./text_data/password.txt', 'r')
+#f4 = open('./text_data/password.txt', 'r')
 
 bot_messages = f1.readlines()
 facs = f2.readlines()
 dirs = f3.readlines()
-correct_pswd = f4.readline().strip()
+correct_pswd = os.environ.get('pswd', '')
 
 f1.close()
 f2.close()
 f3.close()
-f4.close()
+#f4.close()
 
 instructors = Document("text_data/instructors.docx")
 
