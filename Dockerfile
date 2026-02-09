@@ -17,4 +17,4 @@ RUN mkdir -p text_data && \
           resumes.sql
 
 # Запуск бота
-CMD ["python", "bot.py"]
+CMD ["python", "main.py"]
