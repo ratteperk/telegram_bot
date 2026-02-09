@@ -465,7 +465,7 @@ def search_by_name(message):
             users = cur.fetchall()
         
         if not users:
-            bot.send_message(message.chat.id, f"🔍 Не найдено анкет по запросу '{search_term}'")
+            bot.send_message(message.chat.id, f"🔍 Не найдено анкет по запросу '{search_term}'", reply_markup=hide_markup)
             superuser(message)
             return
         
@@ -491,10 +491,7 @@ def search_by_name(message):
                 f"{'─'*30}\n\n"
             )
 
-            if ml and len(ml) > 1000:
-                user_card += f"✉️ Мотивационное письмо (первые 100 символов):\n{ml[:100]}...\n\n"
-            elif ml:
-                user_card += f"✉️ Мотивационное письмо:\n{ml}\n\n"
+            user_card += f"✉️ Мотивационное письмо:\n{ml}\n\n"
             
             if len(response) + len(user_card) > 4000:
                 bot.send_message(message.chat.id, response)
@@ -503,7 +500,7 @@ def search_by_name(message):
                 response += user_card
         
         if response.strip():
-            bot.send_message(message.chat.id, response)
+            bot.send_message(message.chat.id, response, reply_markup=hide_markup)
 
         superuser(message)
     except Exception as e:
