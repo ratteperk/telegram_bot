@@ -1,4 +1,8 @@
+# Secrets
 API.txt
+*.sql
+*.db
+__pycache__/
+*.pyc
+.env
 text_data
-resumes.sql
-test.py
