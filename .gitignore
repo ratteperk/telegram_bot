@@ -5,3 +5,4 @@ API.txt
 __pycache__/
 *.pyc
 .env
+text_data/password.txt
