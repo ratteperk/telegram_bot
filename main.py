@@ -6,6 +6,7 @@ from telebot.storage import StateMemoryStorage
 from telebot import custom_filters
 import sqlite3
 from pprint import pprint
+from docx import Document
 
 # Variables #
 
@@ -53,7 +54,19 @@ f2.close()
 f3.close()
 f4.close()
 
+instructors = Document("text_data/instructors.docx")
+
 ## ---------- Helpers ----------- ##
+
+def get_by_faculty(faculty):
+    table = instructors.tables[0]
+    data = f"Предварительный список преподавателей:\n"
+
+    for row in table.rows:
+        if row.cells[0].text == faculty.strip():
+            data += f"\n{row.cells[2].text} \n{'-'*30}"
+
+    return data
 
 hide_markup = types.ReplyKeyboardRemove()
 
@@ -82,12 +95,12 @@ def get_user_field(user_id, field):
     con.close()
     return result[0] if result and result[0] is not None else None
 
-
 #------------------------- Bot Functions --------------------------# 
 @bot.message_handler(commands=['start'])
 def start(message):
 
     bot.delete_state(message.from_user.id, message.chat.id)
+    print(message.from_user.username)
 
     # DB creation
     con = sqlite3.connect('resumes.sql')
@@ -107,7 +120,7 @@ def start(message):
                 MotivationLetter TEXT, 
                 skills TEXT, 
                 contact TEXT)''')
-
+    
     con.commit()
     cur.close()
 
@@ -134,7 +147,7 @@ def mode(message):
     
     if message.text == 'Председатель СНО':
         bot.send_message(message.chat.id, bot_messages[23], reply_markup=hide_markup)
-        bot.set_state(message.from_user.id, States.SU, message.chat.id)
+        bot.set_state(message.from_user.id, States.AuthSU, message.chat.id)
     elif message.text == 'Студент':
         bot.send_message(message.chat.id, bot_messages[3], reply_markup=hide_markup)
         bot.set_state(message.from_user.id, States.STUDENT_NAME, message.chat.id)
@@ -284,7 +297,7 @@ def Exp(message):
 @bot.message_handler(state=States.DESCEXP)
 def DescExp(message):
     description = message.text
-    bot.send_message(message.chat.id, bot_messages[19], markup=hide_markup)
+    bot.send_message(message.chat.id, bot_messages[19], reply_markup=hide_markup)
     update_user_field(message.from_user.id, 'experience', description)
     bot.set_state(message.from_user.id, States.ML, message.chat.id)
 
@@ -306,8 +319,10 @@ def Skills(message):
 def Contact(message):
     contact = message.text
     update_user_field(message.from_user.id, 'contact', contact)
-    bot.set_state(message.from_user.id, "EndState", message.chat.id)
     bot.send_message(message.chat.id, bot_messages[22])
+    print(get_user_field(message.from_user.id, 'faculty')[2:][:-2])
+    bot.send_message(message.chat.id, get_by_faculty(get_user_field(message.from_user.id, 'faculty')[2:][:-2]))
+    bot.set_state(message.from_user.id, "EndState", message.chat.id)
 
 @bot.message_handler(state="EndState")
 def end(message):
@@ -322,7 +337,8 @@ def superuser_auth(message):
     if pswd == correct_pswd:
         # Состояние остаётся SU — мы уже в режиме суперпользователя
         bot.send_message(message.chat.id, "✅ Авторизация прошла успешно!")
-
+        bot.set_state(message.from_user.id, States.SU, message.chat.id)
+        superuser(message)
     else:
         bot.send_message(message.chat.id, bot_messages[24])
         bot.delete_state(message.from_user.id, message.chat.id)
