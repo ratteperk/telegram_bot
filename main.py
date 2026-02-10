@@ -11,10 +11,10 @@ import os
 import csv
 from io import BytesIO
 import io
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 
 # Variables #
-load_dotenv()
+#load_dotenv()
 
 ## ----------- Bot -------------- ##
 state_storage = StateMemoryStorage()
