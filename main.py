@@ -137,9 +137,6 @@ def start(message):
 
     start_message(message)
 
-@bot.message_handler(commands=['clear_db'])
-def clear_db(message):
-
 
 def start_message(message):
 
