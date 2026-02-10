@@ -11,9 +11,10 @@ import os
 import csv
 from io import BytesIO
 import io
+from dotenv import load_dotenv
 
 # Variables #
-
+load_dotenv()
 
 ## ----------- Bot -------------- ##
 state_storage = StateMemoryStorage()
@@ -103,6 +104,121 @@ def get_user_field(user_id, field):
     return result[0] if result and result[0] is not None else None
 
 #------------------------- Bot Functions --------------------------# 
+
+################################# clear_db ##################################
+
+@bot.message_handler(commands=['clear_db'])
+def clear_db_command(message):
+    """Команда для очистки БД (только для суперпользователя)"""
+    # Проверка: пользователь должен быть в состоянии суперпользователя  
+    if bot.get_state(message.from_user.id, message.chat.id) != States.SU:
+        bot.reply_to(message, "❌ Эта команда доступна только председателю СНО.")
+        return
+    
+    # Подтверждение действия
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ Да, очистить", callback_data='confirm_clear_db'))
+    markup.add(types.InlineKeyboardButton("❌ Отмена", callback_data='cancel_clear_db'))
+    
+    bot.send_message(
+        message.chat.id,
+        "⚠️ Внимание!\n\nВы собираетесь очистить базу данных всех анкет.\n"
+        "Перед очисткой будет создан резервный файл со всеми анкетами.\n\n"
+        "Подтвердите действие:",
+        reply_markup=markup
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data in ['confirm_clear_db', 'cancel_clear_db'])
+def handle_clear_db_confirmation(call):
+    bot.answer_callback_query(call.id)
+    
+    if call.data == 'cancel_clear_db':
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="❌ Очистка отменена."
+        )
+        superuser(call.message)
+    
+    # Подтверждено — начинаем экспорт + очистку
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text="🔄 Экспортирую данные и очищаю базу..."
+    )
+    
+    try:
+        # 1. Экспортируем данные в CSV
+        with sqlite3.connect('resumes.sql') as con:
+            cur = con.cursor()
+            cur.execute('''
+                SELECT id, fullname, faculty, courseNumber, "group", 
+                       ScoreType, avgScore, direction, topic, 
+                       experience, MotivationLetter, skills, contact
+                FROM users 
+                WHERE fullname IS NOT NULL AND fullname != ''
+                ORDER BY id DESC
+            ''')
+            users = cur.fetchall()
+        
+        if not users:
+            bot.send_message(call.message.chat.id, "📭 Нет данных для экспорта и очистки.")
+            superuser(call.message)
+        
+        # Создаём CSV
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_ALL)
+        
+        writer.writerow([
+            'ID', 'ФИО', 'Факультет', 'Курс', 'Группа', 'Тип_оценки',
+            'Средний_балл', 'Направление', 'Тема', 'Опыт',
+            'Мотивационное_письмо', 'Навыки', 'Контакт'
+        ])
+        
+        for user in users:
+            score_type_str = 'Баллы ЕГЭ' if user[5] == 1 else 'Оценка за 2 семестра' if user[5] == 0 else '—'
+            writer.writerow([
+                user[0], user[1], user[2], user[3], user[4],
+                score_type_str, user[6], user[7], user[8], user[9],
+                user[10], user[11], user[12]
+            ])
+        
+        csv_bytes = output.getvalue().encode('utf-8-sig')
+        bio = BytesIO(csv_bytes)
+        bio.name = f'resumes_backup_{call.message.date}.csv'
+        
+        # 2. Отправляем файл пользователю
+        bot.send_document(
+            call.message.chat.id,
+            document=bio,
+            caption=f"✅ Резервная копия создана!\nЭкспортировано анкет: {len(users)}"
+        )
+        
+        # 3. Очищаем таблицу
+        with sqlite3.connect('resumes.sql') as con:
+            cur = con.cursor()
+            cur.execute('DELETE FROM users WHERE id IS NOT NULL')
+            con.commit()
+        
+        # 4. Подтверждение
+        bot.send_message(
+            call.message.chat.id,
+            f"🗑️ База данных успешно очищена!\nУдалено анкет: {len(users)}\n\n"
+            "Файл с резервной копией сохранён выше ⬆️"
+        )
+        
+        # Возврат в меню суперпользователя
+        superuser(call.message)
+        
+    except Exception as e:
+        bot.send_message(
+            call.message.chat.id,
+            f"❌ Ошибка при очистке базы: {str(e)}"
+        )
+        import traceback
+        print("Clear DB error:")
+        traceback.print_exc()
+
 @bot.message_handler(commands=['start'])
 def start(message):
 
@@ -591,119 +707,5 @@ def export_to_csv(callback):
         print("Export error traceback:")
         traceback.print_exc()
 
-
-################################# clear_db ##################################
-
-@bot.message_handler(commands=['clear_db'])
-def clear_db_command(message):
-    """Команда для очистки БД (только для суперпользователя)"""
-    # Проверка: пользователь должен быть в состоянии суперпользователя
-    if bot.get_state(message.from_user.id, message.chat.id) != States.SU:
-        bot.reply_to(message, "❌ Эта команда доступна только председателю СНО.")
-        return
-    
-    # Подтверждение действия
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Да, очистить", callback_data='confirm_clear_db'))
-    markup.add(types.InlineKeyboardButton("❌ Отмена", callback_data='cancel_clear_db'))
-    
-    bot.send_message(
-        message.chat.id,
-        "⚠️ Внимание!\n\nВы собираетесь очистить базу данных всех анкет.\n"
-        "Перед очисткой будет создан резервный файл со всеми анкетами.\n\n"
-        "Подтвердите действие:",
-        reply_markup=markup
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data in ['confirm_clear_db', 'cancel_clear_db'])
-def handle_clear_db_confirmation(call):
-    bot.answer_callback_query(call.id)
-    
-    if call.data == 'cancel_clear_db':
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text="❌ Очистка отменена."
-        )
-        superuser(call.message)
-    
-    # Подтверждено — начинаем экспорт + очистку
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text="🔄 Экспортирую данные и очищаю базу..."
-    )
-    
-    try:
-        # 1. Экспортируем данные в CSV
-        with sqlite3.connect('resumes.sql') as con:
-            cur = con.cursor()
-            cur.execute('''
-                SELECT id, fullname, faculty, courseNumber, "group", 
-                       ScoreType, avgScore, direction, topic, 
-                       experience, MotivationLetter, skills, contact
-                FROM users 
-                WHERE fullname IS NOT NULL AND fullname != ''
-                ORDER BY id DESC
-            ''')
-            users = cur.fetchall()
-        
-        if not users:
-            bot.send_message(call.message.chat.id, "📭 Нет данных для экспорта и очистки.")
-            superuser(call.message)
-        
-        # Создаём CSV
-        output = io.StringIO()
-        writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_ALL)
-        
-        writer.writerow([
-            'ID', 'ФИО', 'Факультет', 'Курс', 'Группа', 'Тип_оценки',
-            'Средний_балл', 'Направление', 'Тема', 'Опыт',
-            'Мотивационное_письмо', 'Навыки', 'Контакт'
-        ])
-        
-        for user in users:
-            score_type_str = 'Баллы ЕГЭ' if user[5] == 1 else 'Оценка за 2 семестра' if user[5] == 0 else '—'
-            writer.writerow([
-                user[0], user[1], user[2], user[3], user[4],
-                score_type_str, user[6], user[7], user[8], user[9],
-                user[10], user[11], user[12]
-            ])
-        
-        csv_bytes = output.getvalue().encode('utf-8-sig')
-        bio = BytesIO(csv_bytes)
-        bio.name = f'resumes_backup_{call.message.date}.csv'
-        
-        # 2. Отправляем файл пользователю
-        bot.send_document(
-            call.message.chat.id,
-            document=bio,
-            caption=f"✅ Резервная копия создана!\nЭкспортировано анкет: {len(users)}"
-        )
-        
-        # 3. Очищаем таблицу
-        with sqlite3.connect('resumes.sql') as con:
-            cur = con.cursor()
-            cur.execute('DELETE FROM users WHERE id IS NOT NULL')
-            con.commit()
-        
-        # 4. Подтверждение
-        bot.send_message(
-            call.message.chat.id,
-            f"🗑️ База данных успешно очищена!\nУдалено анкет: {len(users)}\n\n"
-            "Файл с резервной копией сохранён выше ⬆️"
-        )
-        
-        # Возврат в меню суперпользователя
-        superuser(call.message)
-        
-    except Exception as e:
-        bot.send_message(
-            call.message.chat.id,
-            f"❌ Ошибка при очистке базы: {str(e)}"
-        )
-        import traceback
-        print("Clear DB error:")
-        traceback.print_exc()
 
 bot.polling(none_stop=True)
